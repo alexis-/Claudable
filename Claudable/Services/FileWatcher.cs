@@ -70,22 +70,24 @@ namespace Claudable.Services
 
         private ProjectFile FindProjectFile(ProjectFolder folder, string fullPath)
         {
-            foreach (var item in folder.Children)
+          for (var index = 0; index < folder.Children.Count; index++)
+          {
+            var item = folder.Children[index];
+            if (item is ProjectFile file && file.FullPath == fullPath)
             {
-                if (item is ProjectFile file && file.FullPath == fullPath)
-                {
-                    return file;
-                }
-                else if (item is ProjectFolder subFolder)
-                {
-                    var result = FindProjectFile(subFolder, fullPath);
-                    if (result != null)
-                    {
-                        return result;
-                    }
-                }
+              return file;
             }
-            return null;
+            else if (item is ProjectFolder subFolder)
+            {
+              var result = FindProjectFile(subFolder, fullPath);
+              if (result != null)
+              {
+                return result;
+              }
+            }
+          }
+
+          return null;
         }
 
         public void Dispose()

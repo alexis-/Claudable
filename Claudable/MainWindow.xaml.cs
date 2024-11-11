@@ -69,10 +69,10 @@ namespace Claudable
             if (string.IsNullOrEmpty(e)) return;
             MainViewModel.ArtifactManager.LoadArtifacts(e);
         }
-        private void _webViewManager_ProjectChanged(object? sender, string e)
+        private async void _webViewManager_ProjectChanged(object? sender, string e)
         {
             if (string.IsNullOrEmpty(e)) return;
-            MainViewModel.HandleProjectChanged(e);
+            await MainViewModel.HandleProjectChangedAsync(e);
         }
 
         private async void InitializeAsync()

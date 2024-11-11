@@ -134,13 +134,13 @@ namespace Claudable.ViewModels
 
         public ObservableCollection<SvgArtifactViewModel> SvgArtifacts => ArtifactManager.SvgArtifacts;
 
-        public ICommand SetProjectRootCommand { get; private set; }
+        public IAsyncCommand SetProjectRootCommand { get; private set; }
         public ICommand SaveStateCommand { get; private set; }
-        public ICommand LoadStateCommand { get; private set; }
+        public IAsyncCommand LoadStateCommand { get; private set; }
         public ICommand UpdateArtifactStatusCommand { get; private set; }
         public ICommand DropSvgArtifactCommand { get; private set; }
         public ICommand DoubleClickTrackedArtifactCommand { get; private set; }
-        public ICommand RefreshArtifactsCommand { get; private set; }
+        public IAsyncCommand<ProjectFolder> RefreshArtifactsCommand { get; private set; }
 
         public MainViewModel()
         {
@@ -149,13 +149,13 @@ namespace Claudable.ViewModels
             ArtifactManager = new ArtifactManager();
             _projectAssociationService = new ProjectAssociationService();
 
-            SetProjectRootCommand = new RelayCommand(SetProjectRoot);
+            SetProjectRootCommand = new AsyncCommand(SetProjectRootAsync);
             SaveStateCommand = new RelayCommand(SaveState);
-            LoadStateCommand = new RelayCommand(LoadState);
+            LoadStateCommand = new AsyncCommand(LoadStateAsync);
             UpdateArtifactStatusCommand = new RelayCommand(UpdateArtifactStatus);
             DropSvgArtifactCommand = new RelayCommand<object>(DropSvgArtifact);
             DoubleClickTrackedArtifactCommand = new RelayCommand<ProjectFile>(OnDoubleClickTrackedArtifact);
-            RefreshArtifactsCommand = new RelayCommand<ProjectFolder>(async pf => await RefreshFolderArtifacts(pf), pf => pf is ProjectFolder);
+            RefreshArtifactsCommand = new AsyncCommand<ProjectFolder>(RefreshFolderArtifacts, pf => pf is ProjectFolder);
         }
 
         private void OnDoubleClickTrackedArtifact(ProjectFile projectFile)
@@ -174,6 +174,7 @@ namespace Claudable.ViewModels
 
             _fileWatcher = new FileWatcher(RootProjectFolder, UpdateProjectStructure);
         }
+
         private void UpdateProjectStructure()
         {
             if (_isUpdating)
@@ -190,6 +191,7 @@ namespace Claudable.ViewModels
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         var changes = UpdateProjectStructureRecursive(RootProjectFolder);
+
                         if (changes)
                         {
                             UpdateArtifactStatus();
@@ -290,6 +292,7 @@ namespace Claudable.ViewModels
 
             return hasChanges;
         }
+
         private void ExpandToItem(FileSystemItem item)
         {
             var parent = item.Parent as ProjectFolder;
@@ -300,7 +303,7 @@ namespace Claudable.ViewModels
             }
         }
 
-        private void SetProjectRoot()
+        private async Task SetProjectRootAsync()
         {
             var dialog = new OpenFolderDialog
             {
@@ -310,7 +313,7 @@ namespace Claudable.ViewModels
             if (dialog.ShowDialog() == true)
             {
                 string rootPath = dialog.FolderName;
-                LoadProjectStructure(rootPath);
+                await LoadProjectStructureAsync(rootPath);
 
                 if (!string.IsNullOrEmpty(_currentProjectUrl))
                 {
@@ -319,7 +322,7 @@ namespace Claudable.ViewModels
             }
         }
 
-        public void HandleProjectChanged(string projectUrl)
+        public async Task HandleProjectChangedAsync(string projectUrl)
         {
             _currentProjectUrl = projectUrl;
 
@@ -331,24 +334,27 @@ namespace Claudable.ViewModels
 
             if (projectData != null)
             {
-                LoadProjectStructure(projectData.ProjectAssociation.LocalFolderPath);
+                await LoadProjectStructureAsync(projectData.ProjectAssociation.LocalFolderPath);
                 UpdateArtifactStatus();
                 ApplyFilters();
             }
             else
             {
-                SetProjectRoot();
+                await SetProjectRootAsync();
             }
         }
 
-        private void LoadProjectStructure(string rootPath)
+        private async Task LoadProjectStructureAsync(string rootPath)
         {
             if (RootProjectFolder == null || RootProjectFolder.FullPath != rootPath)
             {
                 RootProjectFolder = new ProjectFolder(Path.GetFileName(rootPath), rootPath);
             }
-            UpdateProjectStructureRecursive(RootProjectFolder);
+
+            await Task.Run(() => UpdateProjectStructureRecursive(RootProjectFolder));
             ApplyFilters();
+            await WebViewManager.UpdateFileNameSuggestions(RootProjectFolder);
+
             OnPropertyChanged(nameof(RootProjectFolder));
         }
 
@@ -539,11 +545,11 @@ namespace Claudable.ViewModels
             }
         }
 
-        private void LoadState()
+        private async Task LoadStateAsync()
         {
             if (File.Exists("appstate.json"))
             {
-                string json = File.ReadAllText("appstate.json");
+                string json = await File.ReadAllTextAsync("appstate.json");
                 var state = JsonConvert.DeserializeObject<AppState>(json);
 
                 IsPanelsSwapped = state.IsPanelsSwapped;
@@ -553,7 +559,7 @@ namespace Claudable.ViewModels
 
                 if (!string.IsNullOrEmpty(state.ProjectRootPath))
                 {
-                    LoadProjectStructure(state.ProjectRootPath);
+                    await LoadProjectStructureAsync(state.ProjectRootPath);
 
                     if (RootProjectFolder != null)
                         RootProjectFolder.RestoreExpandedState(state.ExpandedFolders);
